@@ -25,6 +25,7 @@
 |---|---|
 | `main_sound_fft.py` | **本番用。ラズパイ実機でのみ動作。** マイク入力→FFT→LED点滅→pygame表示。 |
 | `test_sound_fft_laptop.py` | **ラップトップ用の検証スクリプト。** 実機ハードウェアの代わりに疑似サイン波と疑似スイッチ（キーボード）を使い、FFT・表示ロジックだけを手元PCで確認できる。 |
+| `voice_record_playback.py` | **本番用。ラズパイ実機でのみ動作。** スイッチを押している間マイクで録音し、離すと録音した音を再生する。 |
 | `05_measure_samplerate.py` | ADCの実効サンプリングレートを計測する簡易スクリプト。 |
 | `06_test_fft.py` | FFTのピーク検出だけを試すための簡易スクリプト（LED/pygameなし）。 |
 | `f_range_test.py` | ADCの読み取り値のmin/max/範囲を確認するスクリプト。 |
@@ -46,6 +47,22 @@ python main_sound_fft.py
 - スイッチを押している間だけ音を取り込み、FFTのスペクトラムをバーグラフで表示
 - 検出したピーク周波数の帯域に応じてLEDが点滅
 - `Esc`キーかウィンドウを閉じると終了
+
+## 録音→再生する（voice_record_playback.py）
+
+```bash
+pip install numpy pygame spidev RPi.GPIO
+python voice_record_playback.py
+```
+
+- スイッチ（GPIO23）を押している間だけマイクを録音（LEDが点灯）
+- 離すと録音終了、実測サンプリングレートから44.1kHzへリサンプリングして自動再生
+- 安全のため最大5秒（`MAX_RECORD_SEC`）で録音を自動停止
+- `Ctrl+C`で終了
+
+**音の出力先は3.5mmイヤホンジャック固定**です。起動時に`amixer cset numid=3 1`を実行して自動的にジャック出力へ切り替えます
+（この制御が効かない機種・OSの場合は`sudo raspi-config` → `System Options` → `Audio` → `Headphones`で手動設定してください）。
+再生には、ラズパイの3.5mmジャックにイヤホンやスピーカーを挿しておく必要があります。
 
 ## FFT処理の仕様（重要）
 
