@@ -13,6 +13,7 @@ LOW_CUT_FREQ = 80
 STRENGTH_THRESHOLD = 0
 LONG_PRESS_SEC = 0.5
 MAX_DRAW_HZ = 2500
+N_AXIS_TICKS = 6
 
 # FREQ_BANDS: (min, max, blink_freq)
 FREQ_BANDS = [
@@ -159,6 +160,16 @@ def run_display():
                     x = int(i * bar_w)
                     pygame.draw.rect(screen, (80, 100, 255),
                                      (x, H - 60 - h, max(1, int(bar_w)), h))
+
+        # x-axis (Hz) ticks, evenly spaced from 0 to MAX_DRAW_HZ
+        axis_y = H - 60
+        for k in range(N_AXIS_TICKS + 1):
+            tick_hz = MAX_DRAW_HZ * k / N_AXIS_TICKS
+            tx = int(tick_hz / MAX_DRAW_HZ * W)
+            pygame.draw.line(screen, (90, 90, 100), (tx, axis_y), (tx, axis_y + 5))
+            label = font.render(f"{int(tick_hz)}Hz", True, (150, 150, 160))
+            lx = min(max(tx - label.get_width() // 2, 0), W - label.get_width())
+            screen.blit(label, (lx, axis_y + 8))
 
         peak_txt = f"peak: {peak:6.1f} Hz" if peak > 0 else "peak:    --- Hz"
         screen.blit(font.render(peak_txt, True, (255, 255, 255)), (20, 20))
