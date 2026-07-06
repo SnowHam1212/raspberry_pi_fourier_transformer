@@ -1,9 +1,18 @@
-import spidev
-import numpy as np
-import pygame
-import RPi.GPIO as GPIO
+"""
+Laptop-only stand-in for main_sound_fft.py.
+
+Fakes the mic (spidev ADC) and the LED/switch (RPi.GPIO) so the FFT logic
+and pygame display can be exercised without a Raspberry Pi. Not used on
+the Pi itself -- run main_sound_fft.py there.
+
+Controls: SPACE = press the (fake) switch, UP/DOWN = change the fake tone's pitch.
+"""
+import math
 import threading
 import time
+
+import numpy as np
+import pygame
 
 LED_PIN = 17
 SW_PIN = 23
@@ -13,6 +22,7 @@ LOW_CUT_FREQ = 80
 STRENGTH_THRESHOLD = 0
 LONG_PRESS_SEC = 0.5
 MAX_DRAW_HZ = 2500
+FAKE_SAMPLE_RATE = 8000.0  # virtual mic sample rate used for the fake tone
 
 # FREQ_BANDS: (min, max, blink_freq)
 FREQ_BANDS = [
@@ -32,18 +42,59 @@ class Shared:
         self.blink_hz = 0.0
         self.running = True
         self.capturing = False
+        self.led_on = False
+        self.fake_freq = 440.0
+        self.fake_switch = False
 
 shared = Shared()
 
-# ----- hardware setup -----
-spi = spidev.SpiDev()
-spi.open(0, 0)
-spi.max_speed_hz = 1350000
+# ----- fake hardware -----
+class DummyGPIO:
+    BCM = OUT = IN = PUD_UP = 0
+    LOW = 0
+    HIGH = 1
 
-GPIO.setmode(GPIO.BCM)
-GPIO.setwarnings(False)
-GPIO.setup(LED_PIN, GPIO.OUT)
-GPIO.setup(SW_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+    def setmode(self, *a): pass
+    def setwarnings(self, *a): pass
+    def setup(self, *a, **k): pass
+
+    def output(self, pin, value):
+        if pin == LED_PIN:
+            with shared.lock:
+                shared.led_on = (value == self.HIGH)
+
+    def input(self, pin):
+        if pin == SW_PIN:
+            with shared.lock:
+                pressed = shared.fake_switch
+            return self.LOW if pressed else self.HIGH
+        return self.HIGH
+
+    def cleanup(self): pass
+
+class DummySpiDev:
+    def __init__(self):
+        self._n = 0
+
+    def open(self, *a, **k): pass
+
+    def xfer2(self, data):
+        # Uses a virtual sample counter (not the wall clock) so the fake tone's
+        # frequency stays exact no matter how fast/slow this loop actually runs.
+        with shared.lock:
+            freq = shared.fake_freq
+        t = self._n / FAKE_SAMPLE_RATE
+        self._n += 1
+        val = math.sin(2 * math.pi * freq * t)
+        val += 0.02 * (np.random.rand() - 0.5)  # a little noise
+        raw = int((val * 0.5 + 0.5) * 1023)
+        raw = max(0, min(1023, raw))
+        return [0, (raw >> 8) & 0x3, raw & 0xFF]
+
+    def close(self): pass
+
+GPIO = DummyGPIO()
+spi = DummySpiDev()
 
 def read_adc(ch):
     r = spi.xfer2([1, (8 + ch) << 4, 0])
@@ -64,10 +115,9 @@ def audio_worker():
             time.sleep(0.01)
             continue
 
-        t0 = time.time()
         for i in range(N):
             buf[i] = read_adc(0)
-        rate = N / (time.time() - t0)
+        rate = FAKE_SAMPLE_RATE  # the fake tone runs on a fixed virtual clock
 
         b = buf - np.mean(buf)  # remove DC offset
         b = b * window  # window function
@@ -123,7 +173,7 @@ def run_display():
     pygame.init()
     W, H = 800, 400
     screen = pygame.display.set_mode((W, H))
-    pygame.display.set_caption("Sound FFT")
+    pygame.display.set_caption("Sound FFT [laptop test mode]")
     font = pygame.font.SysFont("monospace", 20)
     clock = pygame.time.Clock()
 
@@ -136,8 +186,21 @@ def run_display():
         for event in events:
             if event.type == pygame.QUIT:
                 shared.running = False
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                shared.running = False
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    shared.running = False
+                elif event.key == pygame.K_SPACE:
+                    with shared.lock:
+                        shared.fake_switch = True
+                elif event.key == pygame.K_UP:
+                    with shared.lock:
+                        shared.fake_freq = min(shared.fake_freq + 50, MAX_DRAW_HZ)
+                elif event.key == pygame.K_DOWN:
+                    with shared.lock:
+                        shared.fake_freq = max(shared.fake_freq - 50, LOW_CUT_FREQ)
+            elif event.type == pygame.KEYUP and event.key == pygame.K_SPACE:
+                with shared.lock:
+                    shared.fake_switch = False
 
         screen.fill((15, 15, 20))
 
@@ -147,6 +210,8 @@ def run_display():
             peak = shared.peak
             strength = shared.strength
             capturing = shared.capturing
+            led_on = shared.led_on
+            fake_freq = shared.fake_freq
 
         if len(freqs) > 1 and np.max(mag) > 0:
             mask = freqs <= MAX_DRAW_HZ
@@ -163,8 +228,14 @@ def run_display():
         peak_txt = f"peak: {peak:6.1f} Hz" if peak > 0 else "peak:    --- Hz"
         screen.blit(font.render(peak_txt, True, (255, 255, 255)), (20, 20))
         screen.blit(font.render(f"strength: {strength:9.0f}", True, (200, 200, 200)), (20, 48))
-        state = "CAPTURING" if capturing else "idle (press switch)"
+        state = "CAPTURING" if capturing else "idle (press SPACE)"
         screen.blit(font.render(state, True, (255, 220, 120)), (20, 76))
+
+        led_color = (255, 60, 60) if led_on else (60, 20, 20)
+        pygame.draw.circle(screen, led_color, (W - 40, 30), 12)
+
+        hint = f"fake tone: {fake_freq:.0f} Hz  (UP/DOWN = change pitch, SPACE = switch)"
+        screen.blit(font.render(hint, True, (120, 200, 120)), (20, H - 30))
 
         pygame.display.flip()
         clock.tick(30)
@@ -187,9 +258,6 @@ def main():
     finally:
         shared.running = False
         time.sleep(0.2)
-        GPIO.output(LED_PIN, GPIO.LOW)
-        GPIO.cleanup()
-        spi.close()
         print("clean shutdown")
 
 if __name__ == "__main__":
