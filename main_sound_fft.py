@@ -34,6 +34,13 @@ SMOOTH_KERNEL = 3        # moving-average width for smoothing the spectrum shape
 PEAK_HISTORY = 5         # peak values kept for median smoothing over time
 CALIBRATION_BLOCKS = 3   # blocks captured at startup to build the noise profile
 
+# read_block's wall-clock rate measurement reads a clean, constant 2 semitones
+# (a whole tone) flat versus a reference tuner on this hardware -- the actual
+# effective sample rate runs faster than the measured one by this ratio.
+# Re-derive as 2 ** (semitones_flat / 12) if your hardware's offset differs
+# (measure by comparing a detected note to a tuner on a steady, known pitch).
+RATE_CALIBRATION = 2 ** (2 / 12)
+
 A4_FREQ = 440.0  # reference pitch for 12-tone equal temperament
 NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 
@@ -183,7 +190,7 @@ def audio_worker():
             continue
 
         mag, rate = average_spectra()
-        freqs = np.fft.rfftfreq(N, d=1.0 / rate)
+        freqs = np.fft.rfftfreq(N, d=1.0 / (rate * RATE_CALIBRATION))
 
         with shared.lock:
             noise_profile = shared.noise_profile
