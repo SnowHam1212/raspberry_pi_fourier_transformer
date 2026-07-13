@@ -15,6 +15,7 @@ MAX_PRESS_COUNT = 4        # presses beyond this are treated as a 4-press (top-4
 PEAK_TONE_SEC = 1.0        # how long the double-press peak tone plays
 TOPN_TONE_SEC = 0.3        # how long each top-N tone plays before moving to the next
 TOPN_SUPPRESS_HZ = 100     # min spacing between the top-N peaks so they aren't the same spectral bump
+DISPLAY_PEAK_COUNT = 4     # number of ranked peak frequencies shown on screen
 
 N = 2048
 LOW_CUT_FREQ = 80
@@ -346,6 +347,12 @@ def run_display():
         screen.blit(font.render(f"strength: {strength:9.0f}", True, (200, 200, 200)), (20, 48))
         state = "CAPTURING" if capturing else "idle (press switch)"
         screen.blit(font.render(state, True, (255, 220, 120)), (20, 76))
+
+        ranked_peaks = top_n_peaks(mag, freqs, DISPLAY_PEAK_COUNT)
+        for i in range(DISPLAY_PEAK_COUNT):
+            hz_txt = f"{ranked_peaks[i]:6.1f} Hz" if i < len(ranked_peaks) else "   --- Hz"
+            line = font.render(f"#{i + 1} peak: {hz_txt}", True, (180, 220, 200))
+            screen.blit(line, (20, 104 + i * 26))
 
         pygame.display.flip()
         clock.tick(30)
