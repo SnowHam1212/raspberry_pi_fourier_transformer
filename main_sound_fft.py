@@ -10,6 +10,8 @@ LED_PIN = 17
 SW_PIN = 23
 SPEAKER_PIN = 18
 SPEAKER_DUTY = 50  # % duty cycle for the tone square wave
+DOUBLE_PRESS_WINDOW = 0.4  # max seconds between the two presses of a double-press
+PEAK_TONE_SEC = 1.0        # how long the double-press peak tone plays
 
 N = 2048
 LOW_CUT_FREQ = 80
@@ -187,32 +189,43 @@ def led_worker():
         GPIO.output(LED_PIN, GPIO.LOW)
         time.sleep(half)
 
-# ----- speaker thread ------
-def speaker_worker():
-    """Play the detected peak frequency as an audible tone on GPIO18."""
-    playing = False
-    while shared.running:
-        with shared.lock:
-            hz = shared.peak
-        if hz > 0:
-            if not playing:
-                speaker_pwm.start(SPEAKER_DUTY)
-                playing = True
-            speaker_pwm.ChangeFrequency(hz)
-        elif playing:
-            speaker_pwm.stop()
-            playing = False
-        time.sleep(0.05)
+# ----- speaker helper -----
+def play_peak_tone(duration=PEAK_TONE_SEC):
+    """Play the last detected peak frequency as a tone on GPIO18."""
+    with shared.lock:
+        hz = shared.peak
+    if hz <= 0:
+        return
+    speaker_pwm.start(SPEAKER_DUTY)
+    speaker_pwm.ChangeFrequency(hz)
+    time.sleep(duration)
+    speaker_pwm.stop()
 
 # ----- switch thread ------
+def wait_for_release():
+    while GPIO.input(SW_PIN) == GPIO.LOW and shared.running:
+        time.sleep(0.01)
+
+def wait_for_press(timeout):
+    """Wait up to `timeout` seconds for the switch to go LOW; return whether it did."""
+    t0 = time.time()
+    while shared.running and time.time() - t0 < timeout:
+        if GPIO.input(SW_PIN) == GPIO.LOW:
+            return True
+        time.sleep(0.01)
+    return False
+
 def switch_worker_continuous():
-    """Each press toggles capturing on/off (press to start, press again to stop)."""
+    """A single press toggles FFT capture on/off; two quick presses instead
+    play the last detected peak frequency through the speaker."""
     while shared.running:
-        pressed = GPIO.input(SW_PIN) == GPIO.LOW
-        if pressed:
-            shared.capturing = not shared.capturing
-            while GPIO.input(SW_PIN) == GPIO.LOW and shared.running:
-                time.sleep(0.01)
+        if GPIO.input(SW_PIN) == GPIO.LOW:
+            wait_for_release()
+            if wait_for_press(DOUBLE_PRESS_WINDOW):
+                wait_for_release()
+                play_peak_tone()
+            else:
+                shared.capturing = not shared.capturing
 
         time.sleep(0.01)
 
@@ -286,7 +299,6 @@ def main():
     threads = [
         threading.Thread(target=audio_worker, daemon=True),
         threading.Thread(target=led_worker, daemon=True),
-        threading.Thread(target=speaker_worker, daemon=True),
         threading.Thread(target=switch_worker_continuous, daemon=True)
     ]
 
