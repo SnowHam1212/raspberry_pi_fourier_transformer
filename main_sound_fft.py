@@ -16,6 +16,9 @@ PEAK_TONE_SEC = 1.0        # how long the double-press peak tone plays
 TOPN_TONE_SEC = 0.3        # how long each top-N tone plays before moving to the next
 TOPN_SUPPRESS_HZ = 100     # min spacing between the top-N peaks so they aren't the same spectral bump
 DISPLAY_PEAK_COUNT = 4     # number of ranked peak frequencies shown on screen
+PRESS_LOOKBACK_SEC = 0.3   # use the spectrum snapshot from this far before the press, so the
+                           # button press itself (finger/vibration noise) doesn't get played back
+SNAPSHOT_HISTORY_LEN = 50  # spectrum snapshots kept (generously covers several seconds of blocks)
 
 N = 2048
 LOW_CUT_FREQ = 80
@@ -30,6 +33,9 @@ NOISE_FLOOR_RATIO = 0.3  # bins below this fraction of the block's max are zeroe
 SMOOTH_KERNEL = 3        # moving-average width for smoothing the spectrum shape
 PEAK_HISTORY = 5         # peak values kept for median smoothing over time
 CALIBRATION_BLOCKS = 3   # blocks captured at startup to build the noise profile
+
+A4_FREQ = 440.0  # reference pitch for 12-tone equal temperament
+NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 
 WINDOW = np.hanning(N)
 
@@ -53,6 +59,7 @@ class Shared:
         self.capturing = False
         self.peak_history = deque(maxlen=PEAK_HISTORY)
         self.noise_profile = None
+        self.snapshots = deque(maxlen=SNAPSHOT_HISTORY_LEN)  # (timestamp, peak, spectrum, freqs)
 
 shared = Shared()
 
@@ -77,6 +84,29 @@ def band_blink_hz(peak):
         if lo <= peak < hi:
             return hz
     return 0.0
+
+def nearest_equal_temperament(hz):
+    """Snap a frequency to the nearest 12-tone equal-temperament note (A4=440Hz).
+    Returns (note_freq, note_name) or (0.0, "") if hz <= 0."""
+    if hz <= 0:
+        return 0.0, ""
+    midi = round(69 + 12 * np.log2(hz / A4_FREQ))
+    note_freq = A4_FREQ * (2 ** ((midi - 69) / 12))
+    name = f"{NOTE_NAMES[midi % 12]}{midi // 12 - 1}"
+    return float(note_freq), name
+
+def get_snapshot_before(t):
+    """Return the most recent (timestamp, peak, spectrum, freqs) snapshot at or
+    before time t, so tone playback can use a spectrum from just before a switch
+    press instead of one that may be contaminated by the press itself. Falls
+    back to the oldest available snapshot, or None if there's no history yet."""
+    with shared.lock:
+        candidates = [s for s in shared.snapshots if s[0] <= t]
+        if candidates:
+            return candidates[-1]
+        if shared.snapshots:
+            return shared.snapshots[0]
+        return None
 
 # ------ noise-reduction helpers ------
 def read_block(n=N):
@@ -177,6 +207,7 @@ def audio_worker():
             shared.peak = smoothed_peak
             shared.strength = strength
             shared.blink_hz = band_blink_hz(smoothed_peak) if smoothed_peak > 0 else 0.0
+            shared.snapshots.append((time.time(), smoothed_peak, mag, freqs))
 
 # ----- LED thread ------
 def led_worker():
@@ -194,14 +225,21 @@ def led_worker():
         time.sleep(half)
 
 # ----- speaker helpers -----
-def play_peak_tone(duration=PEAK_TONE_SEC):
-    """Play the last detected peak frequency as a tone on GPIO18."""
-    with shared.lock:
-        hz = shared.peak
-    if hz <= 0:
+def play_peak_tone(duration=PEAK_TONE_SEC, press_time=None):
+    """Play the peak frequency from just before the press (so the press itself
+    doesn't get picked up), pitch-corrected to the nearest equal-temperament
+    note, as a tone on GPIO18."""
+    if press_time is None:
+        press_time = time.time()
+    snapshot = get_snapshot_before(press_time - PRESS_LOOKBACK_SEC)
+    if snapshot is None:
+        return
+    _, hz, _, _ = snapshot
+    note_hz, _ = nearest_equal_temperament(hz)
+    if note_hz <= 0:
         return
     speaker_pwm.start(SPEAKER_DUTY)
-    speaker_pwm.ChangeFrequency(hz)
+    speaker_pwm.ChangeFrequency(note_hz)
     time.sleep(duration)
     speaker_pwm.stop()
 
@@ -222,17 +260,23 @@ def top_n_peaks(mag, freqs, n, suppress_hz=TOPN_SUPPRESS_HZ):
         mag[lo:hi] = 0
     return peaks
 
-def play_topn_loop(n):
-    """Loop the top n peak frequencies (TOPN_TONE_SEC each) until the switch
-    is pressed again."""
-    with shared.lock:
-        mag = shared.spectrum.copy()
-        freqs = shared.freqs.copy()
+def play_topn_loop(n, press_time=None):
+    """Loop the top n peak frequencies (TOPN_TONE_SEC each) from the spectrum
+    snapshot just before the press, pitch-corrected to the nearest
+    equal-temperament note, until the switch is pressed again."""
+    if press_time is None:
+        press_time = time.time()
+    snapshot = get_snapshot_before(press_time - PRESS_LOOKBACK_SEC)
+    if snapshot is None:
+        return
+    _, _, mag, freqs = snapshot
     peaks = top_n_peaks(mag, freqs, n)
-    if not peaks:
+    note_hzs = [nearest_equal_temperament(hz)[0] for hz in peaks]
+    note_hzs = [hz for hz in note_hzs if hz > 0]
+    if not note_hzs:
         return
     while shared.running:
-        for hz in peaks:
+        for hz in note_hzs:
             speaker_pwm.start(SPEAKER_DUTY)
             speaker_pwm.ChangeFrequency(hz)
             stopped = sleep_or_stop(TOPN_TONE_SEC)
@@ -279,14 +323,15 @@ def switch_worker_continuous():
     (0.3s each, N = press count) until a single press stops it."""
     while shared.running:
         if GPIO.input(SW_PIN) == GPIO.LOW:
+            press_time = time.time()  # before wait_for_release/count_presses eat time
             wait_for_release()
             count = count_presses()
             if count == 1:
                 shared.capturing = not shared.capturing
             elif count == 2:
-                play_peak_tone()
+                play_peak_tone(press_time=press_time)
             else:
-                play_topn_loop(count)
+                play_topn_loop(count, press_time=press_time)
 
         time.sleep(0.01)
 
@@ -342,7 +387,8 @@ def run_display():
             lx = min(max(tx - label.get_width() // 2, 0), W - label.get_width())
             screen.blit(label, (lx, axis_y + 8))
 
-        peak_txt = f"peak: {peak:6.1f} Hz" if peak > 0 else "peak:    --- Hz"
+        note_hz, note_name = nearest_equal_temperament(peak)
+        peak_txt = f"peak: {peak:6.1f} Hz -> {note_name} ({note_hz:6.1f} Hz)" if peak > 0 else "peak:    --- Hz"
         screen.blit(font.render(peak_txt, True, (255, 255, 255)), (20, 20))
         screen.blit(font.render(f"strength: {strength:9.0f}", True, (200, 200, 200)), (20, 48))
         state = "CAPTURING" if capturing else "idle (press switch)"
@@ -350,7 +396,11 @@ def run_display():
 
         ranked_peaks = top_n_peaks(mag, freqs, DISPLAY_PEAK_COUNT)
         for i in range(DISPLAY_PEAK_COUNT):
-            hz_txt = f"{ranked_peaks[i]:6.1f} Hz" if i < len(ranked_peaks) else "   --- Hz"
+            if i < len(ranked_peaks):
+                rn_hz, rn_name = nearest_equal_temperament(ranked_peaks[i])
+                hz_txt = f"{ranked_peaks[i]:6.1f} Hz -> {rn_name}"
+            else:
+                hz_txt = "   --- Hz"
             line = font.render(f"#{i + 1} peak: {hz_txt}", True, (180, 220, 200))
             screen.blit(line, (20, 104 + i * 26))
 
