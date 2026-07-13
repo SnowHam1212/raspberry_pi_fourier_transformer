@@ -1,4 +1,126 @@
 # raspberry_pi_fourier_transformer
+<svg width="700" height="620" viewBox="0 0 700 620" xmlns="http://www.w3.org/2000/svg" font-family="'Segoe UI', 'Hiragino Sans', 'Noto Sans JP', sans-serif">
+<style>
+  .th { font-size: 15px; font-weight: 700; fill: #2b2b30; }
+  .ts { font-size: 11px; fill: #4a4a52; }
+  .muted { fill: #8a8a92; }
+</style>
+<rect x="0" y="0" width="700" height="620" fill="#ffffff"/>
+
+<!-- ===== Raspberry Pi ===== -->
+<rect x="30" y="60" width="150" height="500" rx="10" fill="#f7f7f9" stroke="#9a9aa2" stroke-width="1.5"/>
+<text class="th" x="105" y="86" text-anchor="middle">Raspberry Pi</text>
+<text class="ts muted" x="105" y="103" text-anchor="middle">GPIO (BCM)</text>
+
+<rect x="172" y="130" width="16" height="7" rx="2" fill="#e24b4a"/>
+<text class="ts" x="164" y="137" text-anchor="end">3.3V</text>
+<rect x="172" y="158" width="16" height="7" rx="2" fill="#185fa5"/>
+<text class="ts" x="164" y="165" text-anchor="end">GND</text>
+<rect x="172" y="196" width="16" height="7" rx="2" fill="#6a6a72"/>
+<text class="ts" x="164" y="203" text-anchor="end">GPIO8 CE0</text>
+<rect x="172" y="220" width="16" height="7" rx="2" fill="#6a6a72"/>
+<text class="ts" x="164" y="227" text-anchor="end">GPIO9 MISO</text>
+<rect x="172" y="244" width="16" height="7" rx="2" fill="#6a6a72"/>
+<text class="ts" x="164" y="251" text-anchor="end">GPIO10 MOSI</text>
+<rect x="172" y="268" width="16" height="7" rx="2" fill="#6a6a72"/>
+<text class="ts" x="164" y="275" text-anchor="end">GPIO11 SCLK</text>
+<rect x="172" y="330" width="16" height="7" rx="2" fill="#e24b4a"/>
+<text class="ts" x="164" y="337" text-anchor="end">GPIO17</text>
+<rect x="172" y="410" width="16" height="7" rx="2" fill="#534ab7"/>
+<text class="ts" x="164" y="417" text-anchor="end">GPIO23</text>
+<rect x="172" y="490" width="16" height="7" rx="2" fill="#2f8a72"/>
+<text class="ts" x="164" y="497" text-anchor="end">GPIO18 PWM</text>
+
+<!-- ===== 電源レール ===== -->
+<line x1="230" y1="120" x2="670" y2="120" stroke="#e24b4a" stroke-width="1.5"/>
+<text class="ts" x="676" y="124" fill="#a32d2d">3.3V</text>
+<line x1="230" y1="560" x2="670" y2="560" stroke="#185fa5" stroke-width="1.5"/>
+<text class="ts" x="676" y="564" fill="#185fa5">GND</text>
+<path d="M188 133 L210 133 L210 120" fill="none" stroke="#e24b4a" stroke-width="1.5"/>
+<path d="M188 161 L200 161 L200 560" fill="none" stroke="#185fa5" stroke-width="1.5"/>
+
+<!-- ===== MCP3008 ===== -->
+<rect x="270" y="180" width="120" height="150" rx="6" fill="#f7f7f9" stroke="#9a9aa2" stroke-width="1.5"/>
+<path d="M320 180 a10 10 0 0 0 20 0" fill="none" stroke="#9a9aa2" stroke-width="1"/>
+<text class="th" x="330" y="252" text-anchor="middle">MCP3008</text>
+<text class="ts muted" x="330" y="268" text-anchor="middle">ADC</text>
+
+<rect x="256" y="196" width="14" height="6" rx="2" fill="#ba7517"/>
+<text class="ts muted" x="264" y="194" text-anchor="middle">CH0</text>
+<rect x="390" y="196" width="14" height="6" rx="2" fill="#e24b4a"/>
+<text class="ts" x="410" y="201" text-anchor="start">VDD</text>
+<rect x="390" y="212" width="14" height="6" rx="2" fill="#e24b4a"/>
+<text class="ts" x="410" y="217" text-anchor="start">VREF</text>
+<rect x="390" y="228" width="14" height="6" rx="2" fill="#185fa5"/>
+<text class="ts" x="410" y="233" text-anchor="start">AGND</text>
+<rect x="390" y="244" width="14" height="6" rx="2" fill="#6a6a72"/>
+<text class="ts" x="410" y="249" text-anchor="start">CLK</text>
+<rect x="390" y="260" width="14" height="6" rx="2" fill="#6a6a72"/>
+<text class="ts" x="410" y="265" text-anchor="start">DOUT</text>
+<rect x="390" y="276" width="14" height="6" rx="2" fill="#6a6a72"/>
+<text class="ts" x="410" y="281" text-anchor="start">DIN</text>
+<rect x="390" y="292" width="14" height="6" rx="2" fill="#6a6a72"/>
+<text class="ts" x="410" y="297" text-anchor="start">CS</text>
+<rect x="390" y="308" width="14" height="6" rx="2" fill="#185fa5"/>
+<text class="ts" x="410" y="313" text-anchor="start">DGND</text>
+
+<path d="M188 199 L230 199 L230 311 L390 311" fill="none" stroke="#534ab7" stroke-width="1.1"/>
+<path d="M188 223 L224 223 L224 263 L390 263" fill="none" stroke="#534ab7" stroke-width="1.1"/>
+<path d="M188 247 L218 247 L218 279 L390 279" fill="none" stroke="#534ab7" stroke-width="1.1"/>
+<path d="M188 271 L212 271 L212 247 L390 247" fill="none" stroke="#534ab7" stroke-width="1.1"/>
+<path d="M404 199 L440 199 L440 120" fill="none" stroke="#e24b4a" stroke-width="1.1"/>
+<path d="M404 215 L448 215 L448 120" fill="none" stroke="#e24b4a" stroke-width="1.1"/>
+<path d="M404 231 L432 231 L432 560" fill="none" stroke="#185fa5" stroke-width="1.1"/>
+<path d="M404 311 L420 311 L420 560" fill="none" stroke="#185fa5" stroke-width="1.1"/>
+
+<!-- ===== マイクモジュール ===== -->
+<rect x="270" y="360" width="120" height="60" rx="6" fill="#f7f7f9" stroke="#9a9aa2" stroke-width="1.5"/>
+<text class="th" x="330" y="386" text-anchor="middle">マイク</text>
+<text class="ts muted" x="330" y="402" text-anchor="middle">VCC/GND/OUT</text>
+<rect x="256" y="372" width="14" height="6" rx="2" fill="#ba7517"/>
+<text class="ts" x="250" y="377" text-anchor="end">OUT</text>
+<rect x="256" y="392" width="14" height="6" rx="2" fill="#e24b4a"/>
+<text class="ts" x="250" y="397" text-anchor="end">VCC</text>
+<rect x="256" y="408" width="14" height="6" rx="2" fill="#185fa5"/>
+<text class="ts" x="250" y="413" text-anchor="end">GND</text>
+<path d="M256 375 L240 375 L240 199 L256 199" fill="none" stroke="#ba7517" stroke-width="1.4"/>
+<path d="M256 395 L246 395 L246 120" fill="none" stroke="#e24b4a" stroke-width="1.1"/>
+<path d="M256 411 L238 411 L238 560" fill="none" stroke="#185fa5" stroke-width="1.1"/>
+
+<!-- ===== LED + 抵抗 ===== -->
+<circle cx="540" cy="330" r="12" fill="#fcebeb" stroke="#a32d2d" stroke-width="1.5"/>
+<text class="ts" x="540" y="358" text-anchor="middle" fill="#a32d2d">LED</text>
+<rect x="500" y="324" width="30" height="12" rx="2" fill="#f1efe8" stroke="#9a9aa2" stroke-width="1"/>
+<text class="ts" x="515" y="318" text-anchor="middle" fill="#4a4a52">220Ω</text>
+<path d="M188 333 L500 333" fill="none" stroke="#e24b4a" stroke-width="1.2"/>
+<path d="M552 330 L570 330 L570 560" fill="none" stroke="#185fa5" stroke-width="1.1"/>
+
+<!-- ===== タクトスイッチ ===== -->
+<rect x="500" y="398" width="60" height="30" rx="4" fill="#f7f7f9" stroke="#9a9aa2" stroke-width="1.5"/>
+<text class="ts" x="530" y="417" text-anchor="middle">SW</text>
+<path d="M188 413 L500 413" fill="none" stroke="#534ab7" stroke-width="1.2"/>
+<path d="M560 413 L588 413 L588 560" fill="none" stroke="#185fa5" stroke-width="1.1"/>
+
+<!-- ===== スピーカー ===== -->
+<path d="M505 470 L520 470 L535 458 L535 512 L520 500 L505 500 Z" fill="#f7f7f9" stroke="#9a9aa2" stroke-width="1.5"/>
+<path d="M542 468 a12 12 0 0 1 0 34" fill="none" stroke="#9a9aa2" stroke-width="1.2"/>
+<text class="ts muted" x="530" y="528" text-anchor="middle">SPEAKER</text>
+<path d="M188 493 L505 493 L505 485" fill="none" stroke="#2f8a72" stroke-width="1.2"/>
+<path d="M505 500 L505 545 L606 545 L606 560" fill="none" stroke="#185fa5" stroke-width="1.1"/>
+
+<!-- ===== 凡例 ===== -->
+<rect x="30" y="578" width="640" height="30" rx="6" fill="#fafafa" stroke="#e0e0e4" stroke-width="0.5"/>
+<line x1="46" y1="593" x2="66" y2="593" stroke="#e24b4a" stroke-width="2"/>
+<text class="ts" x="72" y="597">3.3V</text>
+<line x1="120" y1="593" x2="140" y2="593" stroke="#185fa5" stroke-width="2"/>
+<text class="ts" x="146" y="597">GND</text>
+<line x1="200" y1="593" x2="220" y2="593" stroke="#534ab7" stroke-width="2"/>
+<text class="ts" x="226" y="597">SPI/SW</text>
+<line x1="290" y1="593" x2="310" y2="593" stroke="#ba7517" stroke-width="2"/>
+<text class="ts" x="316" y="597">アナログ(OUT&#8594;CH0)</text>
+<line x1="460" y1="593" x2="480" y2="593" stroke="#2f8a72" stroke-width="2"/>
+<text class="ts" x="486" y="597">PWM(スピーカー)</text>
+</svg>
 
 マイク（MAX4466 + MCP3008）で拾った音をラズパイ上でリアルタイムFFTにかけ、pygameで音のスペクトラムも画面に表示します。
 ピーク周波数の帯域に応じてLEDを点滅させます。また、第1~第4ピーク周波数までスピーカーから出力することができます。
