@@ -232,7 +232,7 @@ def switch_worker_continuous():
 # ----- pygame display (main thread) ------
 def run_display():
     pygame.init()
-    W, H = 800, 400
+    W, H = 1280, 720
     screen = pygame.display.set_mode((W, H))
     pygame.display.set_caption("Sound FFT")
     font = pygame.font.SysFont("monospace", 20)
