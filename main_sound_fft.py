@@ -210,7 +210,7 @@ def top_n_peaks(mag, freqs, n, suppress_hz=TOPN_SUPPRESS_HZ):
     suppress_hz apart so they aren't just neighboring bins of the same bump."""
     mag = mag.copy()
     freq_res = freqs[1] - freqs[0] if len(freqs) > 1 else 1.0
-    suppress_bins = max(1, int(suppress_hz / freq_res))
+    suppress_bins = max(1, int(suppress_hz / freq_res)) if freq_res > 0 else 1
     peaks = []
     for _ in range(n):
         if np.max(mag) <= 0:
