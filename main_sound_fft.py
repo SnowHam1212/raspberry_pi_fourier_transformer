@@ -4,17 +4,26 @@ import pygame
 import RPi.GPIO as GPIO
 import threading
 import time
+from collections import deque
 
 LED_PIN = 17
 SW_PIN = 23
 
 N = 2048
 LOW_CUT_FREQ = 80
-HIGH_CUT_FREQ = 4000  # above typical voice formants; cuts out electrical/ADC noise peaks
+HIGH_CUT_FREQ = 2000  # above typical voice fundamentals; cuts out electrical/ADC noise peaks
 STRENGTH_THRESHOLD = 0
 LONG_PRESS_SEC = 0.5
 MAX_DRAW_HZ = 2500
 N_AXIS_TICKS = 6
+
+NUM_AVERAGES = 4         # spectra averaged per block to cancel out random noise
+NOISE_FLOOR_RATIO = 0.3  # bins below this fraction of the block's max are zeroed
+SMOOTH_KERNEL = 3        # moving-average width for smoothing the spectrum shape
+PEAK_HISTORY = 5         # peak values kept for median smoothing over time
+CALIBRATION_BLOCKS = 3   # blocks captured at startup to build the noise profile
+
+WINDOW = np.hanning(N)
 
 # FREQ_BANDS: (min, max, blink_freq)
 FREQ_BANDS = [
@@ -34,6 +43,8 @@ class Shared:
         self.blink_hz = 0.0
         self.running = True
         self.capturing = False
+        self.peak_history = deque(maxlen=PEAK_HISTORY)
+        self.noise_profile = None
 
 shared = Shared()
 
@@ -57,42 +68,105 @@ def band_blink_hz(peak):
             return hz
     return 0.0
 
+# ------ noise-reduction helpers ------
+def read_block(n=N):
+    """Read n ADC samples back-to-back and derive the effective sample rate."""
+    buf = np.empty(n, dtype=np.float32)
+    t0 = time.time()
+    for i in range(n):
+        buf[i] = read_adc(0)
+    rate = n / (time.time() - t0)
+    return buf, rate
+
+def compute_spectrum(buf, window=WINDOW):
+    """DC removal + window + FFT magnitude for a single block."""
+    b = buf - np.mean(buf)
+    b = b * window
+    return np.abs(np.fft.rfft(b))
+
+def average_spectra(num=NUM_AVERAGES):
+    """Capture several blocks and average their spectra; random noise cancels out."""
+    spectra = []
+    rate = None
+    for _ in range(num):
+        buf, rate = read_block(N)
+        spectra.append(compute_spectrum(buf))
+    return np.mean(spectra, axis=0), rate
+
+def subtract_noise_profile(mag, profile):
+    """Remove a previously measured steady-state noise spectrum."""
+    if profile is None:
+        return mag
+    out = mag - profile
+    out[out < 0] = 0
+    return out
+
+def apply_band_limit(mag, freqs, low=LOW_CUT_FREQ, high=HIGH_CUT_FREQ):
+    """Zero out everything outside the voice band."""
+    mag = mag.copy()
+    mag[freqs < low] = 0
+    mag[freqs > high] = 0
+    return mag
+
+def apply_noise_floor(mag, ratio=NOISE_FLOOR_RATIO):
+    """Zero out bins weaker than a fraction of the block's own peak."""
+    peak_val = np.max(mag)
+    if peak_val <= 0:
+        return mag
+    mag = mag.copy()
+    mag[mag < peak_val * ratio] = 0
+    return mag
+
+def smooth_spectrum(mag, kernel_size=SMOOTH_KERNEL):
+    """Moving-average smoothing across neighboring frequency bins."""
+    if kernel_size <= 1:
+        return mag
+    kernel = np.ones(kernel_size) / kernel_size
+    return np.convolve(mag, kernel, mode="same")
+
+def calibrate_noise_profile(blocks=CALIBRATION_BLOCKS):
+    """Measure the ambient/electrical noise spectrum while nothing is being said."""
+    print(f"calibrating noise profile ({blocks} blocks, stay quiet)...")
+    spectra = []
+    for _ in range(blocks):
+        buf, _ = read_block(N)
+        spectra.append(compute_spectrum(buf))
+    profile = np.mean(spectra, axis=0)
+    print("noise profile captured")
+    return profile
+
 # ------ audio thread ------
 def audio_worker():
-    window = np.hanning(N)
-    buf = np.empty(N, dtype=np.float32)
     while shared.running:
         if not shared.capturing:
             time.sleep(0.01)
             continue
 
-        t0 = time.time()
-        for i in range(N):
-            buf[i] = read_adc(0)
-        rate = N / (time.time() - t0)
-
-        b = buf - np.mean(buf)  # remove DC offset
-        b = b * window  # window function
-        mag = np.abs(np.fft.rfft(b))
+        mag, rate = average_spectra()
         freqs = np.fft.rfftfreq(N, d=1.0 / rate)
-        mag[freqs < LOW_CUT_FREQ] = 0
-        mag[freqs > HIGH_CUT_FREQ] = 0
+
+        with shared.lock:
+            noise_profile = shared.noise_profile
+
+        mag = subtract_noise_profile(mag, noise_profile)
+        mag = apply_band_limit(mag, freqs)
+        mag = apply_noise_floor(mag)
+        mag = smooth_spectrum(mag)
 
         peak = float(freqs[np.argmax(mag)])
         strength = float(np.max(mag))
 
         if strength < STRENGTH_THRESHOLD:
             peak = 0.0
-            blink = 0.0
-        else:
-            blink = band_blink_hz(peak)
 
         with shared.lock:
+            shared.peak_history.append(peak)
+            smoothed_peak = float(np.median(shared.peak_history)) if peak > 0 else 0.0
             shared.spectrum = mag
             shared.freqs = freqs
-            shared.peak = peak
+            shared.peak = smoothed_peak
             shared.strength = strength
-            shared.blink_hz = blink
+            shared.blink_hz = band_blink_hz(smoothed_peak) if smoothed_peak > 0 else 0.0
 
 # ----- LED thread ------
 def led_worker():
@@ -186,6 +260,8 @@ def run_display():
 
 # ------ main ------
 def main():
+    shared.noise_profile = calibrate_noise_profile()
+
     threads = [
         threading.Thread(target=audio_worker, daemon=True),
         threading.Thread(target=led_worker, daemon=True),
