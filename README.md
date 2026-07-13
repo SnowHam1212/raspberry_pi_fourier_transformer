@@ -74,7 +74,7 @@ python voice_record_playback.py
 2. 実際にかかった時間から実効サンプリングレートを逆算（`rate = N / elapsed`）
 3. 直流成分（オフセット）を引く → ハニング窓をかける
 4. `np.fft.rfft`でFFT → 周波数ごとの強さ（`mag`）を取得
-5. `LOW_CUT_FREQ`（80Hz）未満を0にカット
+5. `LOW_CUT_FREQ`（80Hz）未満と`HIGH_CUT_FREQ`（4000Hz）超を0にカット（声の帯域外の電気的ノイズがピークとして誤検出されるのを防ぐため）
 6. 一番強い周波数（`peak`）とその強さ（`strength`）を取り出す
 7. `shared`（ロック付き共有変数）に書き込み、pygame側の表示スレッドがそれを読んで描画
 

@@ -1,4 +1,5 @@
 import subprocess
+
 import time
 
 import numpy as np
@@ -52,16 +53,7 @@ def to_stereo_wave(raw, rate):
     mono = (resampled * 32767 * 0.9).astype(np.int16)
     return np.column_stack([mono, mono])  # pygame mixer default is stereo
 
-def force_headphone_output():
-    """Route audio to the 3.5mm jack (numid=3: 0=auto, 1=headphones, 2=HDMI)."""
-    try:
-        subprocess.run(["amixer", "cset", "numid=3", "1"], check=True, capture_output=True)
-        print("audio output set to the 3.5mm jack")
-    except Exception:
-        print("could not set audio output automatically; run: sudo raspi-config -> System Options -> Audio -> Headphones")
-
 def main():
-    force_headphone_output()
     pygame.mixer.init(frequency=PLAYBACK_RATE, size=-16, channels=2)
     print("Hold the switch and speak to record. Release it to play back. Ctrl+C to quit.")
 

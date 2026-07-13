@@ -10,6 +10,7 @@ SW_PIN = 23
 
 N = 2048
 LOW_CUT_FREQ = 80
+HIGH_CUT_FREQ = 4000  # above typical voice formants; cuts out electrical/ADC noise peaks
 STRENGTH_THRESHOLD = 0
 LONG_PRESS_SEC = 0.5
 MAX_DRAW_HZ = 2500
@@ -75,6 +76,7 @@ def audio_worker():
         mag = np.abs(np.fft.rfft(b))
         freqs = np.fft.rfftfreq(N, d=1.0 / rate)
         mag[freqs < LOW_CUT_FREQ] = 0
+        mag[freqs > HIGH_CUT_FREQ] = 0
 
         peak = float(freqs[np.argmax(mag)])
         strength = float(np.max(mag))
