@@ -8,6 +8,8 @@ from collections import deque
 
 LED_PIN = 17
 SW_PIN = 23
+SPEAKER_PIN = 18
+SPEAKER_DUTY = 50  # % duty cycle for the tone square wave
 
 N = 2048
 LOW_CUT_FREQ = 80
@@ -57,6 +59,8 @@ GPIO.setmode(GPIO.BCM)
 GPIO.setwarnings(False)
 GPIO.setup(LED_PIN, GPIO.OUT)
 GPIO.setup(SW_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+GPIO.setup(SPEAKER_PIN, GPIO.OUT)
+speaker_pwm = GPIO.PWM(SPEAKER_PIN, 440)
 
 def read_adc(ch):
     r = spi.xfer2([1, (8 + ch) << 4, 0])
@@ -183,6 +187,23 @@ def led_worker():
         GPIO.output(LED_PIN, GPIO.LOW)
         time.sleep(half)
 
+# ----- speaker thread ------
+def speaker_worker():
+    """Play the detected peak frequency as an audible tone on GPIO18."""
+    playing = False
+    while shared.running:
+        with shared.lock:
+            hz = shared.peak
+        if hz > 0:
+            if not playing:
+                speaker_pwm.start(SPEAKER_DUTY)
+                playing = True
+            speaker_pwm.ChangeFrequency(hz)
+        elif playing:
+            speaker_pwm.stop()
+            playing = False
+        time.sleep(0.05)
+
 # ----- switch thread ------
 def switch_worker_continuous():
     while shared.running:
@@ -265,6 +286,7 @@ def main():
     threads = [
         threading.Thread(target=audio_worker, daemon=True),
         threading.Thread(target=led_worker, daemon=True),
+        threading.Thread(target=speaker_worker, daemon=True),
         threading.Thread(target=switch_worker_continuous, daemon=True)
     ]
 
@@ -277,6 +299,7 @@ def main():
         shared.running = False
         time.sleep(0.2)
         GPIO.output(LED_PIN, GPIO.LOW)
+        speaker_pwm.stop()
         GPIO.cleanup()
         spi.close()
         print("clean shutdown")
