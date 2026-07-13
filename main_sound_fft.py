@@ -10,8 +10,11 @@ LED_PIN = 17
 SW_PIN = 23
 SPEAKER_PIN = 18
 SPEAKER_DUTY = 50  # % duty cycle for the tone square wave
-DOUBLE_PRESS_WINDOW = 0.4  # max seconds between the two presses of a double-press
+DOUBLE_PRESS_WINDOW = 0.4  # max seconds between two presses of a multi-press
 PEAK_TONE_SEC = 1.0        # how long the double-press peak tone plays
+TOP3_COUNT = 3             # how many top peaks the triple-press loop plays
+TOP3_TONE_SEC = 0.3        # how long each top-3 tone plays before moving to the next
+TOP3_SUPPRESS_HZ = 100     # min spacing between the top-3 peaks so they aren't the same spectral bump
 
 N = 2048
 LOW_CUT_FREQ = 80
@@ -189,7 +192,7 @@ def led_worker():
         GPIO.output(LED_PIN, GPIO.LOW)
         time.sleep(half)
 
-# ----- speaker helper -----
+# ----- speaker helpers -----
 def play_peak_tone(duration=PEAK_TONE_SEC):
     """Play the last detected peak frequency as a tone on GPIO18."""
     with shared.lock:
@@ -200,6 +203,42 @@ def play_peak_tone(duration=PEAK_TONE_SEC):
     speaker_pwm.ChangeFrequency(hz)
     time.sleep(duration)
     speaker_pwm.stop()
+
+def top_n_peaks(mag, freqs, n=TOP3_COUNT, suppress_hz=TOP3_SUPPRESS_HZ):
+    """Return up to n distinct peak frequencies, strongest first, at least
+    suppress_hz apart so they aren't just neighboring bins of the same bump."""
+    mag = mag.copy()
+    freq_res = freqs[1] - freqs[0] if len(freqs) > 1 else 1.0
+    suppress_bins = max(1, int(suppress_hz / freq_res))
+    peaks = []
+    for _ in range(n):
+        if np.max(mag) <= 0:
+            break
+        idx = int(np.argmax(mag))
+        peaks.append(float(freqs[idx]))
+        lo = max(0, idx - suppress_bins)
+        hi = min(len(mag), idx + suppress_bins + 1)
+        mag[lo:hi] = 0
+    return peaks
+
+def play_top3_loop():
+    """Loop the top TOP3_COUNT peak frequencies (TOP3_TONE_SEC each) until
+    the switch is pressed again."""
+    with shared.lock:
+        mag = shared.spectrum.copy()
+        freqs = shared.freqs.copy()
+    peaks = top_n_peaks(mag, freqs)
+    if not peaks:
+        return
+    while shared.running:
+        for hz in peaks:
+            speaker_pwm.start(SPEAKER_DUTY)
+            speaker_pwm.ChangeFrequency(hz)
+            stopped = sleep_or_stop(TOP3_TONE_SEC)
+            speaker_pwm.stop()
+            if stopped:
+                wait_for_release()
+                return
 
 # ----- switch thread ------
 def wait_for_release():
@@ -215,15 +254,29 @@ def wait_for_press(timeout):
         time.sleep(0.01)
     return False
 
+def sleep_or_stop(duration):
+    """Sleep in small steps, returning True early if the switch is pressed."""
+    t0 = time.time()
+    while shared.running and time.time() - t0 < duration:
+        if GPIO.input(SW_PIN) == GPIO.LOW:
+            return True
+        time.sleep(0.01)
+    return False
+
 def switch_worker_continuous():
-    """A single press toggles FFT capture on/off; two quick presses instead
-    play the last detected peak frequency through the speaker."""
+    """Single press toggles FFT capture on/off (or stops an active top-3
+    loop); double press plays the last peak once; triple press loops the
+    top 3 peaks (0.3s each) until a single press stops it."""
     while shared.running:
         if GPIO.input(SW_PIN) == GPIO.LOW:
             wait_for_release()
             if wait_for_press(DOUBLE_PRESS_WINDOW):
                 wait_for_release()
-                play_peak_tone()
+                if wait_for_press(DOUBLE_PRESS_WINDOW):
+                    wait_for_release()
+                    play_top3_loop()
+                else:
+                    play_peak_tone()
             else:
                 shared.capturing = not shared.capturing
 
