@@ -206,13 +206,13 @@ def speaker_worker():
 
 # ----- switch thread ------
 def switch_worker_continuous():
+    """Each press toggles capturing on/off (press to start, press again to stop)."""
     while shared.running:
         pressed = GPIO.input(SW_PIN) == GPIO.LOW
         if pressed:
-            shared.capturing = True
+            shared.capturing = not shared.capturing
             while GPIO.input(SW_PIN) == GPIO.LOW and shared.running:
                 time.sleep(0.01)
-            shared.capturing = False
 
         time.sleep(0.01)
 
