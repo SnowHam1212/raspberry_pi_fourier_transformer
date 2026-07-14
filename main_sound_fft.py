@@ -195,10 +195,10 @@ def audio_worker():
         with shared.lock:
             noise_profile = shared.noise_profile
 
-        mag = subtract_noise_profile(mag, noise_profile)
-        mag = apply_band_limit(mag, freqs)
-        mag = apply_noise_floor(mag)
-        mag = smooth_spectrum(mag)
+        # mag = subtract_noise_profile(mag, noise_profile)
+        # mag = apply_band_limit(mag, freqs)
+        # mag = apply_noise_floor(mag)
+        # mag = smooth_spectrum(mag)
 
         peak = float(freqs[np.argmax(mag)])
         strength = float(np.max(mag))
